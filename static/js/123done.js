@@ -10,7 +10,28 @@ $(document).ready(function() {
 
   // now check with the server to get our current login state
   $.get('/api/auth_status', function(data) {
-    loggedInEmail = JSON.parse(data).email;
+    var authStatus = JSON.parse(data);
+    loggedInEmail = authStatus.email;
+    var accessToken = authStatus.access_token;
+
+    if (accessToken) {
+      $.getJSON('/api/login')
+        .done(function (data) {
+          var oauthServer = data.oauth_uri;
+
+          $.ajax({
+            url : oauthServer + '/keys',
+            method: 'POST',
+            headers: {"Authorization": "Bearer " + accessToken}
+          })
+          .then(function(resp) {
+            console.log('resp', resp);
+            window.decryptMyKeys(resp.bundle);
+
+          });
+
+        });
+    }
 
     function updateUI(email) {
       $("ul.loginarea li").css('display', 'none');
@@ -125,7 +146,18 @@ $(document).ready(function() {
 
       return createKeyPair()
         .then(function(key) {
-          debugger
+          return window.crypto.subtle.exportKey(
+            "jwk", //can be "jwk" (public or private), "spki" (public only), or "pkcs8" (private only)
+            key.privateKey //can be a publicKey or privateKey, as long as extractable was true
+          ).then(function (jwkPk) {
+            localStorage.setItem('pk', JSON.stringify(jwkPk));
+            return window.crypto.subtle.exportKey(
+              "jwk", //can be "jwk" (public or private), "spki" (public only), or "pkcs8" (private only)
+              key.publicKey //can be a publicKey or privateKey, as long as extractable was true
+            )
+          })
+        })
+        .then(function (keydata) {
           $.getJSON('/api/login')
             .done(function (data) {
 
@@ -133,12 +165,13 @@ $(document).ready(function() {
                 client_id: data.client_id,
                 state: data.state,
                 scope: scopes,
-                redirectUri: data.redirect_uri
+                redirectUri: data.redirect_uri,
+                jwk: JSON.stringify(keydata)
               };
 
               window.location.href = data.oauth_uri + '/authorization' + objectToQueryString(queryParams);
             });
-        })
+        });
 
 
     });

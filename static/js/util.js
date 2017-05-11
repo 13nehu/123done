@@ -29,20 +29,81 @@ function objectToQueryString(obj) {
   return '?' + queryParams.join('&');
 }
 
+function decryptMyKeys(hex) {
+  var pk = JSON.parse(localStorage.getItem('pk'));
+  console.log('pk', pk)
+
+  function hexStringToByte(str) {
+    if (!str) {
+      return new Uint8Array();
+    }
+
+    var a = [];
+    for (var i = 0, len = str.length; i < len; i+=2) {
+      a.push(parseInt(str.substr(i,2),16));
+    }
+
+    return new Uint8Array(a);
+  }
+
+  return window.crypto.subtle.importKey(
+    "jwk", //can be "jwk" (public or private), "spki" (public only), or "pkcs8" (private only)
+    pk,
+    {   //these are the algorithm options
+      name: "RSA-OAEP",
+      hash: {name: "SHA-256"}, //can be "SHA-1", "SHA-256", "SHA-384", or "SHA-512"
+    },
+    false, //whether the key is extractable (i.e. can be used in exportKey)
+    ["decrypt"] //"encrypt" or "wrapKey" for public key import or
+    //"decrypt" or "unwrapKey" for private key imports
+  ).then(function (totallyPk) {
+    console.log('totallyPk', totallyPk)
+    return window.crypto.subtle.decrypt(
+      {
+        name: "RSA-OAEP",
+        //label: Uint8Array([...]) //optional
+      },
+      totallyPk, //from generateKey or importKey above
+      hexStringToByte(hex) //ArrayBuffer of the data
+    )
+      .then(function(decrypted){
+        //returns an ArrayBuffer containing the decrypted data
+        console.log(decrypted);
+        console.log(new Uint8Array(decrypted));
+        console.log('keys', new TextDecoder("utf-8").decode(new Uint8Array(decrypted)))
+        //console.log('keys', keys)
+
+      })
+      .catch(function(err){
+        console.error(err);
+        throw err
+
+      });
+
+
+
+  })
+
+
+}
 
 function createKeyPair () {
   return window.crypto.subtle.generateKey(
     {
-      name: "AES-GCM",
-      length: 256, // can be  128, 192, or 256
+      name: "RSA-OAEP",
+      modulusLength: 4096, //can be 1024, 2048, or 4096
+      publicExponent: new Uint8Array([0x01, 0x00, 0x01]),
+      hash: {name: "SHA-256"}, //can be "SHA-1", "SHA-256", "SHA-384", or "SHA-512"
     },
-    false, // whether the key is extractable (i.e. can be used in exportKey)
-    ["encrypt", "decrypt"] // can "encrypt", "decrypt", "wrapKey", or "unwrapKey"
+    true, //whether the key is extractable (i.e. can be used in exportKey)
+    ["encrypt", "decrypt"] //must be ["encrypt", "decrypt"] or ["wrapKey", "unwrapKey"]
   )
     .then(function(key){
-      //returns a key object
+      //returns a keypair object
       console.log(key);
-      return key;
+      console.log('key.publicKey', key.publicKey);
+      console.log(key.privateKey);
+      return key
     })
     .catch(function(err){
       console.error(err);
